@@ -26,6 +26,35 @@ void free_thread (params_t *params, int number_of_lines){
 	free(threads_strings[params->id]);
 }
 
+int comparator(const void* p, const void* q) { 
+    string str_1 = *(const string*) p; 
+    string str_2 = *(const string*) q; 
+	
+	// str_1 es menor que str_2
+	if(strcasecmp(str_1,str_2) < 0){
+		// str_2 debe ir primero que str_1
+		return 1;
+	}
+
+	// str_1 es idéntico a str_2
+	if(strcasecmp(str_1,str_2) == 0){
+		// son equivalentes
+		return 0;
+	}
+
+	// str_1 es mayor que str_2
+	if(strcasecmp(str_1,str_2) > 0){
+		// str_1 debe ir primero que str_2
+		return -1;
+	}
+
+	/*
+    ( <0 ): Less than zero, if the element pointed by p1 goes before the element pointed by p2.
+    ( 0 ): Zero, if the element pointed by p1 is equivalent to the element pointed by p2.
+    ( >0 ): Greater than zero, if the element pointed by p1 goes after the element pointed by p2.
+	*/
+}
+
 void store_lines (params_t *params, int number_of_lines) {
 	FILE *file;
 	size_t n = 0;
@@ -36,6 +65,7 @@ void store_lines (params_t *params, int number_of_lines) {
 		printf("ERROR FATAL (store_lines): No se pudo abrir '%s'\n",sorted_filename);
 		pthread_exit(NULL);
 	}
+	qsort((void *) threads_strings[params->id], number_of_lines, sizeof(string), comparator);
 	for(int i = 0; i < number_of_lines; i++){
 		printf("Escribiendo: %s", threads_strings[params->id][i]);
 		fprintf(file,"%s",threads_strings[params->id][i]);
