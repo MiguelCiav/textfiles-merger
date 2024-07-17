@@ -6,6 +6,8 @@ stats_t *thread_stats;
 sem_t mutex;
 string **threads_strings;
 FILE **available_files;
+FILE **new_available_files;
+int current_tmp_file;
 int max_available;
 
 void free_threads_data (int argc) {
@@ -15,42 +17,67 @@ void free_threads_data (int argc) {
 	free(worker_threads);
 }
 
-void wait_for_workers (int argc) {
-	for (int i = 0; i < argc - 1; i++) {
-		pthread_join (worker_threads[i],NULL);
+// 19. Función que escribe el archivo final
+
+void write_sorted_file () {
+	FILE* sorted;
+	size_t n = 0;
+	sorted = fopen("sorted.txt", "w");
+	string line;
+	if(sorted == NULL){
+		printf("ERROR (write_sorted_file): No se pudo crear el archivo \"sorted\"\n");
+		pthread_exit(NULL);
 	}
+	for(int i = 0; getline(&line,&n,available_files[0]) != -1; i++){
+		fprintf(sorted,"%s",line);
+	}
+	fclose(sorted);
 }
 
-void free_thread (params_t *params) {
-	int number_of_lines = thread_stats[params->id].number_of_lines;
-	for(int i = 0; i < number_of_lines; i++){
-		free(threads_strings[params->id][i]);
+// 19. Función que escribe todo el contenido de un archivo temporal a otro
+
+void transfer_data (FILE* file1, FILE* file2){
+	size_t n = 0;
+	string line;
+	if(file1 == NULL || file2 == NULL){
+		printf("ERROR (transfer_data): No se pudo transferir la data de los archivos\n");
+		pthread_exit(NULL);
 	}
-	free(threads_strings[params->id]);
+	rewind(file1);
+	rewind(file2);
+	for(int i = 0; getline(&line,&n,file1) != -1; i++){
+		fprintf(file2,"%s",line);
+	}
+	rewind(file1);
+	rewind(file2);
 }
 
-void fill_merge_data(int argc, char* argv[]) {
-	available_files = (FILE**) malloc(sizeof(FILE*)*argc-1);
-	max_available = argc-1;
-	string url;
-	for(int i = 1; i < argc; i++){
-		url = strdup(argv[i]);
-		strcat(url,".sorted");
-		available_files[i - 1] = fopen(url,"r");
-	}
-}
+// 18. Función que cierra temporales
 
-void merge_sorted_files(argc) {
-	while(max_available != 1){
-		if(max_available%2 == 0){
-			printf("Par (%d), creando %d hilos\n", max_available, max_available/2);
-			max_available = (max_available/2);
-		} else {
-			printf("Impar (%d), creando %d hilos\n", max_available, max_available/2);
-			max_available = (max_available/2) + 1;
+void next_level_files (int max, int odd) {
+	if(odd == 0){
+		for(int i = 0; i < max; i++){
+			available_files[i] = tmpfile();
+			transfer_data(new_available_files[i], available_files[i]);
 		}
+	} else {
+		for(int i = 0; i < max; i++){
+			available_files[i] = tmpfile();
+			transfer_data(new_available_files[i], available_files[i]);
+		}
+		available_files[max] = available_files[max_available-1];
 	}
 }
+
+// 17. Función que espera a los hilos 'fusionadores'
+
+void wait_merge_threads (int number_of_threads) {
+	for(int i = 0; i < number_of_threads; i++){
+		pthread_join(worker_threads[i],NULL);
+	}
+}
+
+// 16. Comparador por largo
 
 int compare_by_length (const void* p, const void* q) {
 	string str_1 = *(const string*) p; 
@@ -66,16 +93,7 @@ int compare_by_length (const void* p, const void* q) {
 	}
 }
 
-void save_thread_data (params_t *params) {
-	int number_of_lines = thread_stats[params->id].number_of_lines;
-	qsort((void*) threads_strings[params->id], number_of_lines, sizeof(string), compare_by_length);
-	thread_stats[params->id].shortest_line = threads_strings[params->id][0];
-	thread_stats[params->id].longest_line = threads_strings[params->id][number_of_lines - 1];
-	if(number_of_lines == 0) {
-		thread_stats[params->id].shortest_line = "\n";
-		thread_stats[params->id].longest_line = "\n";
-	}
-}
+// 15. Comparador por alfabeto
 
 int compare_by_alphabet(const void* p, const void* q) { 
     string str_1 = *(const string*) p; 
@@ -106,6 +124,153 @@ int compare_by_alphabet(const void* p, const void* q) {
 	*/
 }
 
+// 14. Contador de líneas para archivos temporales ya abiertos
+
+int count_tmp_lines (FILE* file) {
+	size_t n = 0;
+	string line = NULL;
+	int number_of_lines = 0;
+	while(getline(&line,&n,file) != -1){
+		number_of_lines++;
+	}
+	free(line);
+	rewind(file);
+	return number_of_lines;
+}
+
+// 13. Función del hilo 'fusionador'
+
+void *merge_function (void* arg) {
+	sem_wait(&mutex);
+	int fileID = (int) arg;
+	FILE* file1 = available_files[fileID];
+	FILE* file2 = available_files[fileID + 1];
+	printf("Uniendo archivos %d y %d\n", fileID, fileID+1);
+	int lines1 = count_tmp_lines(file1);
+	int lines2 = count_tmp_lines(file2);
+	int total = lines1 + lines2;
+	int curr = 0;
+	string* strings = (string*) malloc(sizeof(string)*total);
+	string line;
+	size_t n = 0;
+
+	printf("El archivo 1 contiene:\n");
+	for(int i = 0; getline(&line,&n,file1) != -1; i++){
+		printf("%s",line);
+		strings[i] = strdup(line);
+	}
+
+	printf("El archivo 2 contiene:\n");
+	for(int i = lines1; getline(&line,&n,file2) != -1; i++){
+		printf("%s",line);
+		strings[i] = strdup(line);
+	}
+
+	qsort((void *) strings, total, sizeof(string), compare_by_alphabet);
+	
+	
+	if((new_available_files[current_tmp_file] = tmpfile()) == NULL){
+		printf("ERROR (merge_function): No se pudo crear el archivo temporal");
+	}
+	curr = current_tmp_file;
+	current_tmp_file++;
+	
+	printf("El archivo fusionado contiene: \n");
+	for(int i = 0; i < total; i++){
+		printf("%s", strings[i]);
+		fprintf(new_available_files[curr], "%s", strings[i]);
+	}
+
+	rewind(new_available_files[curr]);
+	fclose(file1);
+	fclose(file2);
+
+	sem_post(&mutex);
+}
+
+// 12. Función que crea los hilos 'fusionadores' y les asigna dos archivos
+
+void create_merge_threads (int number_of_threads) {
+	int fileID = 0;
+	current_tmp_file = 0;
+	for(int i = 0; i < number_of_threads; i++){
+		pthread_create(&worker_threads[i],NULL,merge_function,(void*) fileID);
+		fileID += 2;
+	}
+}
+
+// 11. Funcion principal para fusionar archivos .sorted
+
+void init_merge () {
+	sem_init(&mutex,0,1);
+	while(max_available != 1){
+		printf("Total: (%d), creando %d hilos\n", max_available, max_available/2);
+		create_merge_threads(max_available/2);
+		wait_merge_threads(max_available/2);
+		if(max_available%2 == 0){
+			next_level_files(max_available/2,0);
+			max_available = max_available/2;
+		} else {
+			next_level_files(max_available/2,1);
+			max_available = max_available/2 + 1;
+		}
+	}
+	write_sorted_file();
+}
+
+// 10. Función que abre todos los archivos .sorted para los hilos 'fusionadores'
+
+void open_sorted_files (int argc, char* argv[]) {
+	available_files = (FILE**) malloc(sizeof(FILE*)*argc-1);
+	new_available_files = (FILE**) malloc(sizeof(FILE*)*argc-1);
+	max_available = argc-1;
+	string url;
+	for(int i = 1; i < argc; i++){
+		url = strdup(argv[i]);
+		strcat(url,".sorted");
+		available_files[i - 1] = fopen(url,"r");
+		if(available_files[i - 1] == NULL){
+			printf("ERROR (open_sorted_files): No se pudo abrir '%s'\n",url);
+			exit(1);
+		}
+	}
+}
+
+// PARTE I Y PARTE II
+
+// 9. Función que espera a que los hilos trabajadores culminen
+
+void wait_for_workers (int argc) {
+	for (int i = 0; i < argc - 1; i++) {
+		pthread_join (worker_threads[i],NULL);
+	}
+}
+
+// 8. Función que libera los strings de un hilo
+
+void free_thread (params_t *params) {
+	int number_of_lines = thread_stats[params->id].number_of_lines;
+	for(int i = 0; i < number_of_lines; i++){
+		free(threads_strings[params->id][i]);
+	}
+	free(threads_strings[params->id]);
+}
+
+// 7. Función que almacena los datos del hilo en su posición del arreglo stats
+
+void save_thread_data (params_t *params) {
+	int number_of_lines = thread_stats[params->id].number_of_lines;
+	qsort((void*) threads_strings[params->id], number_of_lines, sizeof(string), compare_by_length);
+	thread_stats[params->id].shortest_line = threads_strings[params->id][0];
+	thread_stats[params->id].longest_line = threads_strings[params->id][number_of_lines - 1];
+	if(number_of_lines == 0) {
+		thread_stats[params->id].shortest_line = "\n";
+		thread_stats[params->id].longest_line = "\n";
+	}
+}
+
+// 6. Función que ordena los strings de un hilo y los almacena en un archivo .sorted
+
 void store_lines (params_t *params) {
 	FILE *file;
 	size_t n = 0;
@@ -114,7 +279,7 @@ void store_lines (params_t *params) {
 	strcat(sorted_filename,".sorted");
 	file = fopen(sorted_filename, "w");
 	if(file == NULL){
-		printf("ERROR FATAL (store_lines): No se pudo abrir '%s'\n",sorted_filename);
+		printf("ERROR (store_lines): No se pudo abrir '%s'\n",sorted_filename);
 		pthread_exit(NULL);
 	}
 	qsort((void *) threads_strings[params->id], number_of_lines, sizeof(string), compare_by_alphabet);
@@ -124,30 +289,40 @@ void store_lines (params_t *params) {
 	fclose(file);
 }
 
+// 5. Función que almacena las líneas del archivo de un hilo
+
 void load_lines (params_t *params) {
 	FILE *file;
 	size_t n = 0;
-	char* line = NULL;
+	string line = NULL;
+	int number_of_lines = thread_stats[params->id].number_of_lines;
+	string lastString;
 	file = fopen(params->filename, "r");
 	if (file == NULL){
-		printf("ERROR FATAL (load_lines): No se pudo abrir '%s'\n",params->filename);
+		printf("ERROR (load_lines): No se pudo abrir '%s'\n",params->filename);
 		pthread_exit(NULL);
 	}
 	for(int i = 0; getline(&line,&n,file) != -1; i++){
 		threads_strings[params->id][i] = strdup(line);
 	}
+	lastString = threads_strings[params->id][number_of_lines-1];
+	if(lastString[strlen(lastString)-1] != '\n'){
+		strcat(lastString,"\n");
+	}
 	fclose(file);
 	free(line);
 }
 
+// 4. count_lines: Esta función cuenta la cantidad de líneas que tiene un archivo y lo retorna.
+
 int count_lines (char* filename) {
 	FILE *file;
 	size_t n = 0;
-	char* line = NULL;
+	string line = NULL;
 	int number_of_lines = 0;
 	file = fopen(filename, "r");
 	if (file == NULL){
-		printf("ERROR FATAL (count_lines): No se pudo abrir '%s'\n",filename);
+		printf("ERROR (count_lines): No se pudo abrir '%s'\n",filename);
 		pthread_exit(NULL);
 	}
 	while(getline(&line,&n,file) != -1){
@@ -158,6 +333,9 @@ int count_lines (char* filename) {
 	return number_of_lines;
 }
 
+/* 3. worker_function: Esta función llama a todas las funciones que debe ejecutar
+cada hilo trabajador, además de inicializar ciertos datos de cada hilo */
+
 void *worker_function (void *arg) {
 	params_t *params = (params_t*) arg;
 	int number_of_lines = count_lines(params->filename);
@@ -166,9 +344,12 @@ void *worker_function (void *arg) {
 	load_lines(params);
 	store_lines(params);
 	save_thread_data(params);
-	printf("This worker thread writes %d lines to \"%s.sorted\"\nlongest: %sshortest: %s", number_of_lines, params->filename, thread_stats[params->id].longest_line, thread_stats[params->id].shortest_line);
+	printf("This worker thread writes %d lines to \"%s.sorted\"\n", number_of_lines, params->filename);
 	free_thread(params);
 }
+
+/* 2. init_worker_threads: Crea todos los hilos trabajadores, además, antes
+de crearlos, asigna un id y un archivo a cada hilo creado en el arreglo thread_params */
 
 void init_worker_threads (int argc, char *argv[]) {
 	for (int i = 1; i < argc; i++) {
@@ -178,6 +359,9 @@ void init_worker_threads (int argc, char *argv[]) {
 	}
 }
 
+/* 1. init_threads_data: Aloja la cantidad de memoria necesaria para las estructuras
+de datos de los hilos trabajadores de la PARTE I y II*/
+
 void init_threads_data (int argc) {
 	threads_strings = (string**) malloc(sizeof(string*)*(argc-1));
 	thread_params = (params_t*) malloc(sizeof(params_t)*(argc-1));
@@ -185,12 +369,14 @@ void init_threads_data (int argc) {
 	worker_threads = (pthread_t*) malloc(sizeof(pthread_t)*(argc-1));
 }
 
+// 0. Main
+
 int main(int argc, char *argv[]) {
 	init_threads_data(argc);
 	init_worker_threads(argc,argv);
 	wait_for_workers(argc);
-	fill_merge_data(argc,argv);
-	merge_sorted_files();
+	open_sorted_files(argc,argv);
+	init_merge();
 	free_threads_data(argc);
 	return 0;
 }
