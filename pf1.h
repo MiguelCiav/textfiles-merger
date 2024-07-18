@@ -11,7 +11,7 @@ typedef struct {
 } params_t;
 
 typedef struct {
-    int number_of_lines;
+    unsigned int number_of_lines;
     string longest_line;
     string shortest_line;
 } stats_t;
