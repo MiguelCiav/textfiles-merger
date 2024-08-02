@@ -19,21 +19,55 @@ void free_threads_data (int argc) {
 	free(worker_threads);
 }
 
+// 20. Funcion que imprime la data final
+
 void print_final_data (int argc) {
 	int total_lines = 0;
-	string shortest = thread_stats[0].shortest_line;
-	string longest = thread_stats[0].longest_line;
+	string longest = " ";
+	string shortest = NULL;
+
+	// Encuentra el primer string que no sea nulo para tomarlo de referencia
+	for(int i = 0; i < argc - 1; i++){
+		if(thread_stats[0].shortest_line != NULL){
+			shortest = thread_stats[0].shortest_line;
+			break;
+		}
+	}
+
+	// Si no encontro ninguno, entonces todos los archivos estan vacios
+	if(shortest == NULL) {
+		printf("A total of 0 strings were passed as input,\n"); 
+		printf("longest string sorted: \n");
+		printf("shortest string sorted: \n");
+		return;
+	}
+
 	for(int i = 0; i < argc - 1; i++) {
 		total_lines += thread_stats[i].number_of_lines;
 	}
+
 	for(int i = 1; i < argc - 1; i++){
-		if(strcmp(shortest,thread_stats[i].shortest_line) > 0){
-			shortest = strdup(thread_stats[i].shortest_line);
+		// Si el string es nulo, pasa a la siguiente iteracion
+		if(thread_stats[i - 1].shortest_line == NULL){
+			continue;
+		}
+
+		if(strlen(shortest) > strlen(thread_stats[i - 1].shortest_line)
+		|| (strlen(shortest) == strlen(thread_stats[i - 1].shortest_line) 
+		&& strcasecmp(shortest,thread_stats[i - 1].shortest_line) < 0)) {
+			shortest = strdup(thread_stats[i - 1].shortest_line);
 		}
 	}
+
 	for(int i = 1; i < argc - 1; i++){
-		if(strcmp(longest,thread_stats[i].longest_line) > 0){
-			longest = strdup(thread_stats[i].longest_line);
+		if(thread_stats[i - 1].longest_line == NULL){
+			continue;
+		}
+
+		if(strlen(longest) < strlen(thread_stats[i - 1].longest_line)
+		|| (strlen(longest) == strlen(thread_stats[i - 1].longest_line) 
+		&& strcasecmp(longest,thread_stats[i - 1].longest_line) < 0)) {
+			longest = strdup(thread_stats[i - 1].longest_line);
 		}
 	}
 	printf("A total of %d strings were passed as input,\n", total_lines); 
@@ -101,22 +135,6 @@ void wait_merge_threads (int number_of_threads) {
 	}
 }
 
-// 17. Comparador por largo
-
-int compare_by_length (const void* p, const void* q) {
-	string str_1 = *(const string*) p; 
-    string str_2 = *(const string*) q;
-	if(strlen(str_1) < strlen(str_2)) {
-		return -1;
-	}
-	if(strlen(str_1) > strlen(str_2)) {
-		return 1;
-	}
-	if(strlen(str_1) == strlen(str_2)){
-		return 0;
-	}
-}
-
 // 16. Comparador por alfabeto
 
 int compare_by_alphabet(const void* p, const void* q) { 
@@ -178,7 +196,7 @@ int count_tmp_lines (FILE* file) {
 // 13. Función del hilo 'fusionador'
 
 void *merge_function (void* arg) {
-	int fileID = (int) arg;
+	long fileID = (long) arg;
 	FILE* file1 = available_files[fileID];
 	FILE* file2 = available_files[fileID + 1];
 	int lines1 = count_tmp_lines(file1);
@@ -211,14 +229,13 @@ void *merge_function (void* arg) {
 	rewind(new_available_files[curr]);
 
 	fclose(file1);
-	fclose(file2);
-	
+	fclose(file2);	
 }
 
 // 12. Función que crea los hilos 'fusionadores' y les asigna dos archivos
 
 void create_merge_threads (int number_of_threads) {
-	int fileID = 0;
+	long fileID = 0;
 	current_tmp_file = 0;
 	for(int i = 0; i < number_of_threads; i++){
 		pthread_create(&worker_threads[i],NULL,merge_function,(void*) fileID);
@@ -286,13 +303,34 @@ void free_thread (params_t *params) {
 
 void save_thread_data (params_t *params) {
 	int number_of_lines = thread_stats[params->id].number_of_lines;
-	qsort((void*) threads_strings[params->id], number_of_lines, sizeof(string), compare_by_length);
-	thread_stats[params->id].shortest_line = strdup(threads_strings[params->id][0]);
-	thread_stats[params->id].longest_line = strdup(threads_strings[params->id][number_of_lines - 1]);
+
 	if(number_of_lines == 0) {
-		thread_stats[params->id].shortest_line = "\n";
-		thread_stats[params->id].longest_line = "\n";
+		thread_stats[params->id].shortest_line = NULL;
+		thread_stats[params->id].longest_line = NULL;
+		return;
 	}
+
+	string shortest = threads_strings[params->id][0];
+	string longest = threads_strings[params->id][0];
+
+	for(int i = 0; i < number_of_lines; i++){
+		if(strlen(shortest) > strlen(threads_strings[params->id][i])
+		|| (strlen(shortest) == strlen(threads_strings[params->id][i]) 
+		&& strcasecmp(shortest,threads_strings[params->id][i]) < 0)) {
+			shortest = threads_strings[params->id][i];
+			
+		}
+
+		if(strlen(longest) < strlen(threads_strings[params->id][i])
+		|| (strlen(longest) == strlen(threads_strings[params->id][i]) 
+		&& strcasecmp(longest,threads_strings[params->id][i]) < 0)) {
+			longest = threads_strings[params->id][i];
+			
+		}
+	}
+
+	thread_stats[params->id].shortest_line = strdup(shortest);
+	thread_stats[params->id].longest_line = strdup(longest);
 }
 
 // 6. Función que ordena los strings de un hilo y los almacena en un archivo .sorted
@@ -323,6 +361,11 @@ void load_lines (params_t *params) {
 	string line = NULL;
 	int number_of_lines = thread_stats[params->id].number_of_lines;
 	string lastString;
+
+	if(number_of_lines == 0){
+		return;
+	}
+
 	file = fopen(params->filename, "r");
 	int counter = 0;
 	if (file == NULL){
@@ -367,6 +410,7 @@ int count_lines (char* filename) {
 
 /* 3. worker_function: Esta función llama a todas las funciones que debe ejecutar
 cada hilo trabajador, además de inicializar ciertos datos de cada hilo */
+// Limpia
 
 void *worker_function (void *arg) {
 	params_t *params = (params_t*) arg;
@@ -382,6 +426,7 @@ void *worker_function (void *arg) {
 
 /* 2. init_worker_threads: Crea todos los hilos trabajadores, además, antes
 de crearlos, asigna un id y un archivo a cada hilo creado en el arreglo thread_params */
+// Limpia
 
 void init_worker_threads (int argc, char *argv[]) {
 	for (int i = 1; i < argc; i++) {
@@ -393,6 +438,7 @@ void init_worker_threads (int argc, char *argv[]) {
 
 /* 1. init_threads_data: Aloja la cantidad de memoria necesaria para las estructuras
 de datos de los hilos trabajadores de la PARTE I y II*/
+// Limpia
 
 void init_threads_data (int argc) {
 	threads_strings = (string**) malloc(sizeof(string*)*(argc-1));
@@ -402,8 +448,13 @@ void init_threads_data (int argc) {
 }
 
 // 0. Main
+// Limpia
 
 int main(int argc, char *argv[]) {
+	if(argc < 3){
+		printf("Error: almost 2 values are needed as arguments\n");
+		exit(1);
+	}
 	init_threads_data(argc);
 	init_worker_threads(argc,argv);
 	wait_for_workers(argc);
