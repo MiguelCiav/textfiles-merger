@@ -23,5 +23,6 @@ typedef struct {
 #include <pthread.h>
 #include <semaphore.h>
 #include <string.h>
+#include <ctype.h>
 
 #endif

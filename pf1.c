@@ -23,36 +23,19 @@ void free_threads_data (int argc) {
 
 void print_final_data (int argc) {
 	int total_lines = 0;
-	string longest = " ";
+	string longest = NULL;
 	string shortest = NULL;
-
-	// Encuentra el primer string que no sea nulo para tomarlo de referencia
-	for(int i = 0; i < argc - 1; i++){
-		if(thread_stats[0].shortest_line != NULL){
-			shortest = thread_stats[0].shortest_line;
-			break;
-		}
-	}
-
-	// Si no encontro ninguno, entonces todos los archivos estan vacios
-	if(shortest == NULL) {
-		printf("A total of 0 strings were passed as input,\n"); 
-		printf("longest string sorted: \n");
-		printf("shortest string sorted: \n");
-		return;
-	}
-
-	// Calcula el total de lineas
 	for(int i = 0; i < argc - 1; i++) {
 		total_lines += thread_stats[i].number_of_lines;
 	}
-
 	for(int i = 0; i < argc - 1; i++){
-		// Si el string es nulo, pasa a la siguiente iteracion
 		if(thread_stats[i].shortest_line == NULL){
 			continue;
 		}
-
+		if(shortest == NULL) {
+			shortest = thread_stats[i].shortest_line;
+			continue;
+		}
 		if(strlen(thread_stats[i].shortest_line) < strlen(shortest)) {
 			shortest = strdup(thread_stats[i].shortest_line);
 		} else if (strlen(shortest) == strlen(thread_stats[i].shortest_line)) {
@@ -61,8 +44,14 @@ void print_final_data (int argc) {
 			}
 		}
 	}
-
 	for(int i = 0; i < argc - 1; i++){
+		if(thread_stats[i].longest_line == NULL){
+			continue;
+		}
+		if(longest == NULL) {
+			longest = thread_stats[i].longest_line;
+			continue;
+		}
 		if(strlen(thread_stats[i].longest_line) > strlen(longest)) {
 			longest = strdup(thread_stats[i].longest_line);
 		} else if (strlen(longest) == strlen(thread_stats[i].longest_line)) {
@@ -71,9 +60,15 @@ void print_final_data (int argc) {
 			}
 		}
 	}
-	printf("A total of %d strings were passed as input,\n", total_lines); 
-	printf("longest string sorted: %s\n", longest);
-	printf("shortest string sorted: %s\n", shortest);
+	if(longest == NULL || shortest == NULL) {
+		printf("A total of 0 strings were passed as input,\n"); 
+		printf("longest string sorted: \n");
+		printf("shortest string sorted: \n");
+	} else {
+		printf("A total of %d strings were passed as input,\n", total_lines); 
+		printf("longest string sorted: %s\n", longest);
+		printf("shortest string sorted: %s\n", shortest);
+	}
 }
 
 // 21. Función que escribe el archivo final
@@ -353,85 +348,128 @@ void store_lines (params_t *params) {
 	}
 	qsort((void *) threads_strings[params->id], number_of_lines, sizeof(string), compare_by_alphabet);
 	for(int i = 0; i < number_of_lines; i++){
-		fprintf(file,"%s",threads_strings[params->id][i]);
+		fprintf(file,"%s\n",threads_strings[params->id][i]);
 	}
 	fclose(file);
 }
 
-// 5. Función que almacena las líneas del archivo de un hilo
-
-void load_lines (params_t *params) {
-	FILE *file;
-	size_t n = 0;
-	string line = NULL;
-	int number_of_lines = thread_stats[params->id].number_of_lines;
-	string lastString;
-
-	if(number_of_lines == 0){
-		return;
+string trim(string str) {
+	if(str==NULL){
+		return '\0';
 	}
-
-	file = fopen(params->filename, "r");
-	int counter = 0;
-	if (file == NULL){
-		printf("ERROR (load_lines): No se pudo abrir '%s'\n",params->filename);
-		pthread_exit(NULL);
-	}
-	for(int i = 0; getline(&line,&n,file) != -1; i++){
-		if(strcmp(line,"\n") != 0){
-			threads_strings[params->id][counter] = strdup(line);
-			counter++;
+	string trimmed;
+	int index = 0;
+	int auxIndex = 0;
+	while(str[auxIndex] != '\0'){
+		if(isspace(str[auxIndex]) == 0){
+			auxIndex++;
+			index=auxIndex;
+		} else {
+			auxIndex++;
 		}
 	}
-	lastString = threads_strings[params->id][number_of_lines-1];
-	if(lastString[strlen(lastString)-1] != '\n'){
-		strcat(lastString,"\n");
-	}
-	fclose(file);
-	free(line);
+	trimmed = (string) malloc(sizeof(char)*(index+1));
+	strncpy(trimmed, str, index);
+	trimmed[index] = '\0';
+	return trimmed;
 }
 
-// 4. count_lines: Esta función cuenta la cantidad de líneas que tiene un archivo y lo retorna.
-
-int count_lines (char* filename) {
+void read_lines (params_t *params) {
 	FILE *file;
-	size_t n = 0;
-	string line = NULL;
+	size_t strings_amount = 50;
+	size_t string_size = 200;
 	int number_of_lines = 0;
-	file = fopen(filename, "r");
+	int character;
+	int curr_char = 0;
+	int curr_string = 0;
+
+	// ABRE EL ARCHIVO
+	file = fopen(params->filename, "r");
 	if (file == NULL){
-		printf("ERROR (count_lines): No se pudo abrir '%s'\n",filename);
-		pthread_exit(NULL);
+		fprintf(stderr, "(read_lines): can't open file");
+		exit(1);
 	}
-	while(getline(&line,&n,file) != -1){
-		if(strcmp(line,"\n") != 0){
+
+	// ALOJA MEMORIA PARA LOS STRINGS DEL HILO
+	threads_strings[params->id] = (string*) malloc(sizeof(string)*strings_amount);
+	if(threads_strings[params->id] == NULL){
+		fprintf(stderr, "(read_lines) can't allocate in threads_strings\n");
+		exit(1);
+	}
+
+	// ALOJA MEMORIA PARA EL PRIMER STRING
+	threads_strings[params->id][curr_string] = (string) malloc(sizeof(char)*string_size);
+	if(threads_strings[params->id][curr_string] == NULL){
+		fprintf(stderr, "(read_lines) can't allocate in string\n");
+		exit(1);
+	}
+
+	// LEE CARACTER POR CARACTER MIENTRAS NO SEA EL FINAL DEL ARCHIVO
+	while((character = fgetc(file)) != EOF){
+		// SI ES UN SALTO DE LINEA O ESPACIO, CONTINUAR
+		if(isspace(character) != 0 && curr_char == 0){
+			continue;
+		} else if (isspace(character) == 0 && curr_char == 0) {
 			number_of_lines++;
 		}
+
+		// SI LA CANTIDAD DE STRINGS ES MAYOR A LA ALOJADA, RE-ALOJA EN MEMORIA
+		if(curr_string >= strings_amount - 1) {
+			strings_amount += 5;
+			threads_strings[params->id] = (string*) realloc(threads_strings[params->id], sizeof(string)*strings_amount);
+			if(threads_strings[params->id] == NULL){
+				fprintf(stderr, "(read_lines) can't reallocate in threads_strings\n");
+				exit(1);
+			}
+		}
+
+		// SI LA CANTIDAD DE CARACTERES ES MAYOR AL DEL STRING, RE-ALOJA EN MEMORIA
+		if(curr_char >= string_size - 1) {
+			string_size += 10;
+			threads_strings[params->id][curr_string] = (string) realloc(threads_strings[params->id][curr_string],sizeof(char)*string_size);
+			if(threads_strings[params->id][curr_string] == NULL){
+				fprintf(stderr, "(read_lines) can't reallocate in buffer\n");
+				exit(1);
+			}
+		}
+
+		// SI EL CARACTER ES UN SALTO DE LINEA, AÑADIR EL CARACTER NULO Y PASAR EL SIGUIENTE STRING
+		// SI NO, GUARDAR EL CARACTER EN EL STRING ACTUAL
+		if(character == '\n'){
+			threads_strings[params->id][curr_string][curr_char] = '\0';
+			threads_strings[params->id][curr_string] = strdup(trim(threads_strings[params->id][curr_string]));
+			curr_string++;
+			curr_char = 0;
+			string_size = 10;
+			threads_strings[params->id][curr_string] = (string) malloc(sizeof(char)*string_size);
+		} else {
+			threads_strings[params->id][curr_string][curr_char] = character;
+			curr_char++;
+		}
 	}
+
+	threads_strings[params->id][curr_string][curr_char] = '\0';
+	threads_strings[params->id][curr_string] = strdup(trim(threads_strings[params->id][curr_string]));
+
+	thread_stats[params->id].number_of_lines = number_of_lines;
 	fclose(file);
-	free(line);
-	return number_of_lines;
 }
 
 /* 3. worker_function: Esta función llama a todas las funciones que debe ejecutar
 cada hilo trabajador, además de inicializar ciertos datos de cada hilo */
-// Limpia
 
 void *worker_function (void *arg) {
 	params_t *params = (params_t*) arg;
-	int number_of_lines = count_lines(params->filename);
-	threads_strings[params->id] = malloc(sizeof(string)*number_of_lines);
-	thread_stats[params->id].number_of_lines = number_of_lines;
-	load_lines(params);
+	read_lines(params);
 	store_lines(params);
 	save_thread_data(params);
+	int number_of_lines = thread_stats[params->id].number_of_lines;
 	printf("This worker thread writes %d lines to \"%s.sorted\"\n", number_of_lines, params->filename);
 	free_thread(params);
 }
 
 /* 2. init_worker_threads: Crea todos los hilos trabajadores, además, antes
 de crearlos, asigna un id y un archivo a cada hilo creado en el arreglo thread_params */
-// Limpia
 
 void init_worker_threads (int argc, char *argv[]) {
 	for (int i = 1; i < argc; i++) {
@@ -443,7 +481,6 @@ void init_worker_threads (int argc, char *argv[]) {
 
 /* 1. init_threads_data: Aloja la cantidad de memoria necesaria para las estructuras
 de datos de los hilos trabajadores de la PARTE I y II*/
-// Limpia
 
 void init_threads_data (int argc) {
 	threads_strings = (string**) malloc(sizeof(string*)*(argc-1));
@@ -453,7 +490,6 @@ void init_threads_data (int argc) {
 }
 
 // 0. Main
-// Limpia
 
 int main(int argc, char *argv[]) {
 	if(argc < 3){
@@ -466,6 +502,6 @@ int main(int argc, char *argv[]) {
 	open_sorted_files(argc,argv);
 	init_merge();
 	print_final_data(argc);
-	free_threads_data(argc);
+	//free_threads_data(argc);
 	return 0;
 }
