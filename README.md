@@ -1,4 +1,4 @@
-# Información del Proyecto MiniShell
+# Información del Proyecto 2
 
 ## Datos Personales
 - **Nombres:**  [Henry Manuel] [Miguel Angel]
