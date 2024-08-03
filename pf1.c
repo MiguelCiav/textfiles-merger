@@ -69,8 +69,6 @@ void print_final_data (int argc) {
 			if(strcasecmp(longest,thread_stats[i].longest_line) < 0) {
 				longest = strdup(thread_stats[i].longest_line);
 			}
-		} else {
-			printf("\n\n");
 		}
 	}
 	printf("A total of %d strings were passed as input,\n", total_lines); 
