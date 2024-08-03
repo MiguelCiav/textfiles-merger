@@ -42,32 +42,35 @@ void print_final_data (int argc) {
 		return;
 	}
 
+	// Calcula el total de lineas
 	for(int i = 0; i < argc - 1; i++) {
 		total_lines += thread_stats[i].number_of_lines;
 	}
 
-	for(int i = 1; i < argc - 1; i++){
+	for(int i = 0; i < argc - 1; i++){
 		// Si el string es nulo, pasa a la siguiente iteracion
-		if(thread_stats[i - 1].shortest_line == NULL){
+		if(thread_stats[i].shortest_line == NULL){
 			continue;
 		}
 
-		if(strlen(shortest) > strlen(thread_stats[i - 1].shortest_line)
-		|| (strlen(shortest) == strlen(thread_stats[i - 1].shortest_line) 
-		&& strcasecmp(shortest,thread_stats[i - 1].shortest_line) < 0)) {
-			shortest = strdup(thread_stats[i - 1].shortest_line);
+		if(strlen(thread_stats[i].shortest_line) < strlen(shortest)) {
+			shortest = strdup(thread_stats[i].shortest_line);
+		} else if (strlen(shortest) == strlen(thread_stats[i].shortest_line)) {
+			if(strcasecmp(shortest,thread_stats[i].shortest_line) < 0) {
+				shortest = strdup(thread_stats[i].shortest_line);
+			}
 		}
 	}
 
-	for(int i = 1; i < argc - 1; i++){
-		if(thread_stats[i - 1].longest_line == NULL){
-			continue;
-		}
-
-		if(strlen(longest) < strlen(thread_stats[i - 1].longest_line)
-		|| (strlen(longest) == strlen(thread_stats[i - 1].longest_line) 
-		&& strcasecmp(longest,thread_stats[i - 1].longest_line) < 0)) {
-			longest = strdup(thread_stats[i - 1].longest_line);
+	for(int i = 0; i < argc - 1; i++){
+		if(strlen(thread_stats[i].longest_line) > strlen(longest)) {
+			longest = strdup(thread_stats[i].longest_line);
+		} else if (strlen(longest) == strlen(thread_stats[i].longest_line)) {
+			if(strcasecmp(longest,thread_stats[i].longest_line) < 0) {
+				longest = strdup(thread_stats[i].longest_line);
+			}
+		} else {
+			printf("\n\n");
 		}
 	}
 	printf("A total of %d strings were passed as input,\n", total_lines); 
@@ -314,18 +317,22 @@ void save_thread_data (params_t *params) {
 	string longest = threads_strings[params->id][0];
 
 	for(int i = 0; i < number_of_lines; i++){
-		if(strlen(shortest) > strlen(threads_strings[params->id][i])
-		|| (strlen(shortest) == strlen(threads_strings[params->id][i]) 
-		&& strcasecmp(shortest,threads_strings[params->id][i]) < 0)) {
+		if(strlen(shortest) > strlen(threads_strings[params->id][i])) {
 			shortest = threads_strings[params->id][i];
-			
+		} else if (strlen(shortest) == strlen(threads_strings[params->id][i])){
+			if(strcasecmp(shortest,threads_strings[params->id][i]) < 0) {
+				shortest = threads_strings[params->id][i];
+			}
 		}
+	}
 
-		if(strlen(longest) < strlen(threads_strings[params->id][i])
-		|| (strlen(longest) == strlen(threads_strings[params->id][i]) 
-		&& strcasecmp(longest,threads_strings[params->id][i]) < 0)) {
+	for(int i = 0; i < number_of_lines; i++){
+		if(strlen(longest) < strlen(threads_strings[params->id][i])) {
 			longest = threads_strings[params->id][i];
-			
+		} else if (strlen(longest) == strlen(threads_strings[params->id][i])) {
+			if(strcasecmp(longest,threads_strings[params->id][i]) < 0) {
+				longest = threads_strings[params->id][i];
+			}
 		}
 	}
 
