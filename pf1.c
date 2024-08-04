@@ -167,8 +167,7 @@ int compare_by_alphabet(const void* p, const void* q) {
 void delete_duplicates (string* strings, int length){
 	for(int i = 0; i < length; i++) {
 		for(int j = 0; j < length; j++){
-			if(j != i && strcmp(strings[i],strings[j]) == 0 && strcmp(strings[j],"") != 0){
-			// if(j != i && strcasecmp(strings[i],strings[j]) == 0 && strcasecmp(strings[j],"") != 0)
+			if(j != i && strcasecmp(strings[i],strings[j]) == 0 && strcasecmp(strings[j],"") != 0) {
 				strings[j] = "";
 			}
 		}
