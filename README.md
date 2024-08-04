@@ -12,4 +12,5 @@ https://docs.google.com/document/d/1PymUvEZmcS09ObWLUJfP5L9LJWzMIC63rx7P4iTC-OI/
 
 ## Errores conocidos y/o funcionalidades faltantes, de haberlas.
 
-Para caracteres especiales se desempata utilizando el código ASCII debido al criterio de la función strcasecmp
+- Para caracteres especiales se desempata utilizando el código ASCII debido al criterio de la función strcasecmp.
+- En el codigo, las comparaciones para verificar duplicados hacen uso de strcmp, sensible a mayúsculas, por lo que, strings como 'casa' y 'cAsa', no se consideran duplicados.
